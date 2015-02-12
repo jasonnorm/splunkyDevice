@@ -1,0 +1,53 @@
+{
+  "d": {
+    "results": [
+      {
+        "__metadata": {
+          "id": "http://norja08-pmda:8581/odata/api/group(186354L)",
+          "uri": "http://norja08-pmda:8581/odata/api/group(186354L)",
+          "type": "com.ca.im.odata.group"
+        },
+        "ID": "186354",
+        "Name": "Massachusetts",
+        "Description": "site in Framingham, MA",
+        "devices": {
+          "results": [
+            {
+              "__metadata": {
+                "id": "http://norja08-pmda:8581/odata/api/devices(6765L)",
+                "uri": "http://norja08-pmda:8581/odata/api/devices(6765L)",
+                "type": "com.ca.im.odata.device"
+              },
+              "ID": "6765",
+              "Name": "Cisco-3945_10.231.200.201",
+              "Description": null,
+              "PrimaryIPAddress": "10.231.200.201"
+            },
+            {
+              "__metadata": {
+                "id": "http://norja08-pmda:8581/odata/api/devices(6767L)",
+                "uri": "http://norja08-pmda:8581/odata/api/devices(6767L)",
+                "type": "com.ca.im.odata.device"
+              },
+              "ID": "6767",
+              "Name": "Cisco-3945_10.231.200.202",
+              "Description": null,
+              "PrimaryIPAddress": "10.231.200.202"
+            },
+            {
+              "__metadata": {
+                "id": "http://norja08-pmda:8581/odata/api/devices(6779L)",
+                "uri": "http://norja08-pmda:8581/odata/api/devices(6779L)",
+                "type": "com.ca.im.odata.device"
+              },
+              "ID": "6779",
+              "Name": "cis720496-5.ca.com",
+              "Description": null,
+              "PrimaryIPAddress": "138.42.96.5"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

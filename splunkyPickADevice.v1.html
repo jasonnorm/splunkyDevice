@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>CAPM OpenAPI Custom Content</title>
+	<link rel="stylesheet" href="css/includes/CA_dashboard.css" />
+	<link rel="stylesheet" href="css/includes/jquery.dataTables.css" />
+	<link href="./lib/nvd3/src/nv.d3.css" rel="stylesheet" type="text/css">
+
+	<script type="text/javascript" src="./lib/jquery/jquery-1.11.1.min.js"></script>
+	<script type="text/javascript" src="./lib/jquery/jquery.dataTables.min.js"></script>
+	<script type="text/javascript" src="./lib/jsonpath-0.8.0.js"></script>
+	<script type="text/javascript" src="./lib/loadJSON.js"></script>
+	<script src="./lib/nvd3/lib/d3.v3.js"></script>
+	<script src="./lib/nvd3/nv.d3.js"></script>
+	<script src="./lib/nvd3/source/utils.js"></script>
+	<script src="./lib/nvd3/src/models/line.js"></script>
+</head>
+<body>
+<div class="row" style="margin-bottom:0px; margin-top:5px">
+		<div class="content" id="devicePicker" style="height: 30px;">
+			<form>
+				<select id="mySelect" style="font-family: 'Source Sans Pro'; font-size:1em;" onChange="getOption()"></select>
+			</form>
+		</div>
+</div>
+<div class="row">
+	<h2 class="heading" id="header"></h2>
+</div>
+<div class="view view_1">
+	<div class="title">Interface Details Table</div>
+	<div class="subtitle" id="deviceName"></div>
+	<div class="content" id="InterfaceTable" style="height:auto;"></div>
+</div>
+	<br>
+<div class="view view_1">
+		<div class="title">Device Utilization Trend</div>
+		<div class="subtitle" id="deviceName2"></div>
+		<div class="content" id="chart1" style="height: 250px;">
+			<svg></svg>
+		</div>
+</div>
+
+<script type="text/javascript">
+
+// Parse URL parameters passed in from CAPC
+// We are looking for "subject", "starttime", & "endtime" to drive the
+// context of our OpenAPI Query
+//
+	
+	function getQueryVariable(variable) {
+		var query = window.location.search.substring(1);
+		var vars = query.split("&");
+		for (var i=0;i<vars.length;i++) {
+			var pair = vars[i].split("=");
+			if(pair[0] == variable){return pair[1];}
+		}
+		return(false);
+	}
+	var startTime=getQueryVariable("starttime");
+	var endTime=getQueryVariable("endtime");
+	var groupName=getQueryVariable("subject");
+	var convertedStart=new Date(startTime*1000);
+	var convertedEnd=new Date(endTime*1000);
+	// Debug to show the parsed parameter values 
+		console.log("Start time:" + startTime + " End time: " + endTime + " Subject: " + groupName);
+
+// Define the OpenAPI call as a string substituting the parameter values as needed
+//
+// Test using local json document
+	var groupContents="./json/routersInGroup.json";
+/*var groupContents="http://norja08-pmda:8581/odata/api/group?$expand=devices" + 
+										"&$filter=Name eq '" + groupName + "'" +
+										"&$select=devices/ID, devices/Name, devices/Description, devices/PrimaryIPAddress, ID, Name, Description" +
+										"&$top=500" +
+										"&$format=json";
+*/
+
+// Parse out list of routers from JSON data called through
+// OPenAPI call within CAPC Browser Views (${subject} parameter)
+// 
+
+	$.each(jsonPath(loadJSON(groupContents),"$.d.results[*]"), function(i, router) {
+		routerList = router.devices.results.map (function (device) {
+			return (device.Name)
+		});
+	});	
+
+	
+// Provide user with pop-up dialog to choose from the list of router names
+// in our router list
+
+// Add the string prompting the user to select a device to the 
+// begining of the router list array
+	routerList.unshift("Select a target device: ");
+// Add HTML option objects for each router in the list
+// to poulate the drop-down menu with choices
+	$.each(routerList, function(i, router){
+			$('#mySelect').append('<option>' + router + '</option>');
+		});
+// Function to get the object selected by the drop down menu
+// and assign to variable
+function getOption() {
+		var e = document.getElementById("mySelect");
+		var strUser = e.options[e.selectedIndex].text;
+		// Debug to show the parsed item selected
+			console.log("item:" + strUser);
+	
+// Add report header information including selected device and
+// start and end times as passed from CAPC parameters
+		$('#header').html("Device: " + strUser);
+		$('#start').html("Start: " + convertedStart);
+		$('#end').html("End: " + convertedEnd);
+		$('#deviceName').html(strUser);
+		$('#deviceName2').html(strUser);
+	
+
+// Fetch interfaces, and metrics for target device using timerange passed in from
+// CAPC Browser view start and end time parameters
+	// Test using local json document
+	var interfaceMetrics="./json/deviceInterfacesMetrics.json";
+/*	var interfaceMetrics="http://norja08-pmda:8581/odata/api/interface?$expand=portmfs" +
+											"&starttime=" + startTime + "&endtime=" + endTime +
+											"&$filter=device/Name eq '" + strUser + "'" +
+											"&$select=ID, Name, Alias, Description, SpeedIn, SpeedOut, MACAddress, portmfs/im_ErrorsIn, portmfs/im_ErrorsOut," +
+											"portmfs/im_DiscardsIn, portmfs/im_DiscardsOut, portmfs/im_UtilizationIn, portmfs/im_UtilizationOut, portmfs/Timestamp" +
+											"&$top=50&$format=json"; */
+
+// Call the OpenAPI using the paramatized query to obtain the performance information for all of the
+// interfaces on the selected device. This includes basic port attributes as well as errors, discards, and utilization
+// metrics for each interface
+
+// Define my varaibles scoped outside of the iterations parsing the
+// 
+	var nvd3Data = [];
+	var deviceChoice;
+	var interfaceList = [];
+	// Testing var to control maximum iterations
+	var counter=0;
+// Iterate the JSON data returned by the OpenAPI call
+	$.each(jsonPath(loadJSON(interfaceMetrics),"$.d.results[*]"), function(i, interface) {
+		// Iterate timeseries data for each interface and build objects to store metrics
+		// per interface
+		//
+			var errorsIn = interface.portmfs.results.map (function (dataPoint) {
+				return ({date: new Date (dataPoint.Timestamp*1000), errorsIn: Number(dataPoint.im_ErrorsIn)});
+				});
+			var errorsOut = interface.portmfs.results.map (function (dataPoint) {
+				return ({date: new Date (dataPoint.Timestamp*1000), errorsOut: Number(dataPoint.im_ErrorsOut)});
+				});
+			var discardsIn = interface.portmfs.results.map (function (dataPoint) {
+				return ({date: new Date (dataPoint.Timestamp*1000), discardsIn: Number(dataPoint.im_DiscardsIn)});
+				});
+			var discardsOut = interface.portmfs.results.map (function (dataPoint) {
+				return ({date: new Date (dataPoint.Timestamp*1000), discardsOut: Number(dataPoint.im_DiscardsOut)});
+				});
+			var utilIn = interface.portmfs.results.map (function (dataPoint) {
+				return ({date: new Date (dataPoint.Timestamp*1000), utilIn: Number(dataPoint.im_UtilizationIn)});
+				});
+			var utilOut = interface.portmfs.results.map (function (dataPoint) {
+				return ({date: new Date (dataPoint.Timestamp*1000), utilOut: Number(dataPoint.im_UtilizationOut)});
+				});
+			var d3errorsIn = interface.portmfs.results.map (function (dataPoint) {
+				return ([new Date (dataPoint.Timestamp*1000), Number(dataPoint.im_UtilizationIn)]);
+				});
+
+		// Add interface to global array and add attributes and time series data per
+		// interface and metric
+		//
+			interfaceList.push({
+				id: interface.ID,
+				key: interface.Name,
+				name: interface.Name,
+				description: interface.Description,
+				speedIn: d3.format("s")(interface.SpeedIn),
+				speedOut: d3.format("s")(interface.SpeedOut),
+				ts_errorsIn: errorsIn,
+				ts_errorsOut: errorsOut,
+				ts_discardsIn: discardsIn,
+				ts_discardsOut: discardsOut,
+				ts_utilIn: utilIn,
+				ts_uiltOut: utilOut,
+				sum_errorsIn: d3.sum(errorsIn, function (ts) {return ts.errorsIn}),
+				sum_errorsOut: d3.sum(errorsOut, function (ts) {return ts.errorsOut}),
+				sum_discardsIn: d3.sum(discardsIn, function (ts) {return ts.discardsIn}),
+				sum_discardsOut: d3.sum(discardsOut, function (ts) {return ts.discardsOut}),
+				avg_utilIn: Math.round(d3.mean(utilIn, function (ts) {return ts.utilIn})*100)/100,
+				avg_utilOut: Math.round(d3.mean(utilOut, function (ts) {return ts.utilOut})*100)/100
+			});
+
+			// Testing: Only want to plot 1 interface at the moment
+			if (counter < 2) {
+				nvd3Data.push({
+				key: interface.Name,
+				values: d3errorsIn,
+				mean: Math.round(d3.mean(d3errorsIn, function (ts) {return ts.errorsIn})*100) / 100
+			});
+			// testing
+			counter++;
+		};
+
+}); // END
+
+// When document is loaded enter the loop to create the charts
+// We're waiting to ensure all of the libraries and data have loaded
+	$(document).ready(function() {
+	//Add row to our summary table for each interface 
+	$('#InterfaceTable').html( '<table class="compact hover order-column" id="Table"></table>' );
+	    $('#Table').dataTable( {
+	      "data": interfaceList,
+	      "columns": [
+	          { title: "Port", data: "name", className: "dt-body-left" },
+	          { title: "SpeedIn", data: "speedIn", className: "dt-center" },
+	          { title: "SpeedOut", data: "speedOut", className: "dt-center"  },
+	          { title: "ErrorsIn", data: "sum_errorsIn", className: "dt-center" },
+	          { title: "ErrorsOut", data: "sum_errorsOut", className: "dt-center" },
+	          { title: "DiscardsIn", data: "sum_discardsIn", className: "dt-center" },
+	          { title: "DiscardsOut", data: "sum_discardsOut", className: "dt-center" },
+	          { title: "UtilizationIn (%)", data: "avg_utilIn", className: "dt-center" },
+	          { title: "UtilizationOut (%)", data: "avg_utilOut", className: "dt-center" },
+	      ]
+	  } );
+	}); 
+	// Add the trend chart
+	nv.addGraph(function() {  
+	   var chart = nv.models.lineChart()
+	             .useInteractiveGuideline(true)
+	             .x(function(d) { return d[0] })
+	             .y(function(d) { return d[1] })
+	             .color(d3.scale.category10().range())
+	             .transitionDuration(300)
+	             .clipVoronoi(false)
+	             .forceY([0,100])
+	             .margin({top: 50, right: 50, bottom: 50, left: 50});
+
+	  chart.xAxis
+	    .tickFormat(function(d) {
+	       return d3.time.format('%I:%M %p')(new Date(d))
+	      });
+
+	  chart.yAxis
+	    .tickFormat(d3.format(',.2f'));
+	  chart.color( ['#747c96','#d47385','#89a676','#c8b453'] )
+	  chart.xScale(d3.time.scale()); // Evenly scale the time values to align with data points
+	  d3.select('#chart1 svg')
+	      .datum(nvd3Data)
+	      .call(chart);
+
+	  //Rebuild the chart when the window reloaded
+	  nv.utils.windowResize(chart.update);
+	  // Log the new window state
+	  chart.dispatch.on('stateChange', function(e) { nv.log('New State:', JSON.stringify(e)); });
+	  // return the chart to the function to get loaed
+	  return chart;
+	});
+}
+</script>
+
+</body>
+</html>
